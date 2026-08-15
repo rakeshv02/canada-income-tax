@@ -137,6 +137,7 @@ ins.adsbygoogle,.ad-banner iframe,.ad-slot iframe,.ad-container iframe{visibilit
     <h2>What this calculator includes</h2>
     <ul>
       <li>2025 federal brackets with the BPA phase-out for high earners</li>
+      <li>Standard employee credits: Canada employment amount plus CPP/QPP and EI/QPIP premium credits, federally and provincially</li>
       <li>All 13 provincial and territorial bracket sets and basic personal amounts</li>
       <li>Ontario surtax (20% + 36% tiers) and the Ontario health premium</li>
       <li>Quebec specifics: QPP, QPIP, and the 16.5% federal abatement</li>
@@ -240,24 +241,10 @@ function onHealthPremium(inc){
   if (inc<=200000) return 600+Math.min((inc-72000)*0.25,150);
   return 750+Math.min((inc-200000)*0.25,150);
 }
+var CEA = 1471; // Canada employment amount 2025
 function calc(gross, code){
   var p=PROV[code], isQC=code==='QC';
-  // Federal
-  var fedGross=bracketTax(gross,FED.brackets);
-  var fedCredit=fedBPA(gross)*FED.brackets[0][1];
-  var fed=Math.max(0,fedGross-fedCredit);
-  if (isQC && p.abatement) fed=fed*(1-p.abatement);
-  // Provincial
-  var provGross=bracketTax(gross,p.brackets);
-  var provCredit=p.bpa*p.brackets[0][1];
-  var prov=Math.max(0,provGross-provCredit);
-  if (p.surtax){
-    var s=0;
-    for (var i=0;i<p.surtax.length;i++) if (prov>p.surtax[i][0]) s+=(prov-p.surtax[i][0])*p.surtax[i][1];
-    prov+=s;
-  }
-  if (p.healthPremium) prov+=onHealthPremium(gross);
-  // Pension + EI
+  // Pension + EI first (they generate tax credits)
   var pen, penLabel, ei, eiLabel, qpip=0;
   if (isQC){
     pen=Math.max(0,Math.min(gross,QPP.ympe)-QPP.exempt)*QPP.rate + Math.max(0,Math.min(gross,QPP.yampe)-QPP.ympe)*QPP.rate2;
@@ -269,6 +256,21 @@ function calc(gross, code){
     penLabel='CPP';
     ei=Math.min(gross,EI.mie)*EI.rate; eiLabel='EI';
   }
+  // Federal: credits for BPA + Canada employment amount + CPP/QPP + EI (+QPIP) at lowest rate
+  var fedGross=bracketTax(gross,FED.brackets);
+  var fedCredit=(fedBPA(gross) + Math.min(CEA,gross) + pen + ei + qpip)*FED.brackets[0][1];
+  var fed=Math.max(0,fedGross-fedCredit);
+  if (isQC && p.abatement) fed=fed*(1-p.abatement); // abatement on basic federal tax (after credits)
+  // Provincial: credits for BPA + CPP/QPP + EI (+QPIP) at lowest provincial rate
+  var provGross=bracketTax(gross,p.brackets);
+  var provCredit=(p.bpa + pen + ei + qpip)*p.brackets[0][1];
+  var prov=Math.max(0,provGross-provCredit);
+  if (p.surtax){
+    var s=0;
+    for (var i=0;i<p.surtax.length;i++) if (prov>p.surtax[i][0]) s+=(prov-p.surtax[i][0])*p.surtax[i][1];
+    prov+=s;
+  }
+  if (p.healthPremium) prov+=onHealthPremium(gross);
   var total=fed+prov+pen+ei+qpip;
   return { fed:fed, prov:prov, pen:pen, penLabel:penLabel, ei:ei, eiLabel:eiLabel, qpip:qpip, total:total, net:gross-total, provName:p.name };
 }
